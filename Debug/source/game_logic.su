@@ -1,0 +1,2 @@
+../source/game_logic.c:9:6:verticalRangesOverlap	24	static
+../source/game_logic.c:16:6:resetBallAfterPoint	24	static

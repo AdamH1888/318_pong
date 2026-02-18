@@ -1,0 +1,6 @@
+../source/draw.c:5:12:clampValueToRange	24	static
+../source/draw.c:14:6:draw_top_border	16	static
+../source/draw.c:24:6:draw_bottom_border	16	static
+../source/draw.c:35:6:draw_side_borders	16	static
+../source/draw.c:45:6:draw_paddle	32	static
+../source/draw.c:59:6:draw_ball	16	static

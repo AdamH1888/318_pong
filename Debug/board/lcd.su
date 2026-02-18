@@ -1,0 +1,11 @@
+../board/lcd.c:13:23:bl_mask	4	static
+../board/lcd.c:18:20:delay_us	16	static
+../board/lcd.c:23:20:delay_ms	16	static
+../board/lcd.c:28:17:i2c_write_buf	40	static
+../board/lcd.c:40:13:send4bytes	24	static
+../board/lcd.c:55:6:pcf8574_send_cmd	24	static
+../board/lcd.c:62:6:pcf8574_send_data	24	static
+../board/lcd.c:69:6:pcf8574_set_backlight	24	static
+../board/lcd.c:75:6:pcf8574_cursor	24	static
+../board/lcd.c:81:6:pcf8574_send_string	16	static
+../board/lcd.c:87:6:pcf8574_init	16	static

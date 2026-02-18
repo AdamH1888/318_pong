@@ -1,0 +1,12 @@
+../board/shield_oled.c:21:1:OLED_Init	72	static
+../board/shield_oled.c:69:1:OLED_Send	16	static
+../board/shield_oled.c:82:6:OLED_SetPage	24	static
+../board/shield_oled.c:93:6:OLED_SetSeg	24	static
+../board/shield_oled.c:105:6:OLED_FillDisplay	1048	static
+../board/shield_oled.c:117:6:OLED_Print	56	dynamic
+../board/shield_oled.c:167:6:OLED_WriteChar	16	static
+../board/shield_oled.c:177:6:OLED_LineWrap	8	static
+../board/shield_oled.c:215:6:OLED_FillPage	152	static
+../board/shield_oled.c:231:6:OLED_Scroll	24	static
+../board/shield_oled.c:241:6:OLED_Reset	8	static
+../board/shield_oled.c:251:6:OLED_ResetPrint	8	static
