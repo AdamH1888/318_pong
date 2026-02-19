@@ -730,12 +730,12 @@
 &lt;vendor&gt;NXP&lt;/vendor&gt;&#13;
 &lt;memory can_program="true" id="Flash" is_ro="true" size="2048" type="Flash"/&gt;&#13;
 &lt;memory id="RAM" size="512" type="RAM"/&gt;&#13;
-&lt;memoryInstance derived_from="Flash" driver="MCXNxxx.cfx" id="PROGRAM_FLASH0" location="0x0" size="0x100000"/&gt;&#13;
-&lt;memoryInstance derived_from="Flash" driver="MCXNxxx.cfx" id="PROGRAM_FLASH1" location="0x100000" size="0x100000"/&gt;&#13;
-&lt;memoryInstance derived_from="RAM" id="SRAM" location="0x20000000" size="0x60000"/&gt;&#13;
-&lt;memoryInstance derived_from="RAM" id="SRAMX" location="0x4000000" size="0x18000"/&gt;&#13;
-&lt;memoryInstance derived_from="RAM" id="SRAMH" location="0x20060000" size="0x8000"/&gt;&#13;
-&lt;memoryInstance derived_from="RAM" id="USB_RAM" location="0x400ba000" size="0x1000"/&gt;&#13;
+&lt;memoryInstance derived_from="Flash" driver="MCXNxxx.cfx" id="PROGRAM_FLASH0" location="0x00000000" size="0x00100000"/&gt;&#13;
+&lt;memoryInstance derived_from="Flash" driver="MCXNxxx.cfx" id="PROGRAM_FLASH1" location="0x00100000" size="0x00100000"/&gt;&#13;
+&lt;memoryInstance derived_from="RAM" id="SRAM" location="0x20000000" size="0x00060000"/&gt;&#13;
+&lt;memoryInstance derived_from="RAM" id="SRAMX" location="0x04000000" size="0x00018000"/&gt;&#13;
+&lt;memoryInstance derived_from="RAM" id="SRAMH" location="0x20060000" size="0x00008000"/&gt;&#13;
+&lt;memoryInstance derived_from="RAM" id="USB_RAM" location="0x400ba000" size="0x00001000"/&gt;&#13;
 &lt;/chip&gt;&#13;
 &lt;processor&gt;&#13;
 &lt;name gcc_name="cortex-m33"&gt;Cortex-M33&lt;/name&gt;&#13;

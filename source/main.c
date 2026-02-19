@@ -89,15 +89,20 @@ int main(void) {
 	initOLED();			//Initialises OLED display
 	lcd_score_init();	//Initialises score system on LCD character display
 
-	//Sensor struct showing what GPIO and pin are used for TRIG and ECHO
+	//Sensor structs showing what GPIO and pin are used for TRIG and ECHO
 	hcsr04_t sensor = { .trigGpio = GPIO0, .trigPin = 29u, .echoGpio = GPIO1,
 			.echoPin = 23u, };
+
+    // Sensor 2: Controls right paddle
+    hcsr04_t sensor2 = {	.trigGpio = GPIO1, .trigPin = 10u,.echoGpio = GPIO1,
+        .echoPin = 11u	};
 
 	CLOCK_EnableClock(kCLOCK_Gpio0);
 	CLOCK_EnableClock(kCLOCK_Gpio1);
 
-	//Initialises this so readings from distance sensor can be taken
+	//Initialises this so readings from distance sensors can be taken
 	HCSR04_Init(&sensor);
+	HCSR04_Init(&sensor2);
 
 	//Initialises score on LCD as 0-0
 	lcd_show_score(0, 0);
