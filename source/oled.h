@@ -59,15 +59,6 @@ void scrollOLED(uint8_t rows);
 void writeChar(uint8_t character, bool inverted);
 void writeString(char *string, bool inverted, uint8_t seg, uint8_t page);
 void printfOLED(const char *format, ...);
-void printVar(char *formatting, int32_t var, bool inverted, uint8_t seg,
-		uint8_t page);
 void lineWrap(void);
-
-/* Debug */
-void testFont(uint8_t startChar, uint8_t endChar);
-
-/* Helpers */
-uint8_t min(uint8_t num1, uint8_t num2);
-uint8_t max(uint8_t num1, uint8_t num2);
 
 #endif /* OLED_H_ */

@@ -1,1 +1,2 @@
-../board/hardware_init.c:6:6:BOARD_InitHardware	8	static
+C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_clock.h:1492:20:CLOCK_EnableClock	24	static
+../board/hardware_init.c:7:6:BOARD_InitHardware	8	static

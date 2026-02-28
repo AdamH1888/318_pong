@@ -271,6 +271,7 @@ void BOARD_BootClockFROHF144M(void)
 name: BOARD_BootClockPLL150M
 called_from_default_init: true
 outputs:
+- {id: ADC1_clock.outFreq, value: 12 MHz}
 - {id: CLK_144M_clock.outFreq, value: 144 MHz}
 - {id: CLK_48M_clock.outFreq, value: 48 MHz}
 - {id: FRO_12M_clock.outFreq, value: 12 MHz}
@@ -285,10 +286,12 @@ settings:
 - {id: PLL0_Mode, value: Normal}
 - {id: RunPowerMode, value: OD}
 - {id: SCGMode, value: PLL0}
+- {id: ADC1CLKDIV_HALT, value: Enable}
 - {id: SCG.PLL0M_MULT.scale, value: '50', locked: true}
 - {id: SCG.PLL0SRCSEL.sel, value: SCG.FIRC_48M}
 - {id: SCG.PLL0_NDIV.scale, value: '8', locked: true}
 - {id: SCG.SCSSEL.sel, value: SCG.PLL0_CLK}
+- {id: SYSCON.ADC1CLKSEL.sel, value: SCG.FRO_12M}
 - {id: SYSCON.FLEXSPICLKSEL.sel, value: NO_CLOCK}
 - {id: SYSCON.FREQMEREFCLKSEL.sel, value: SYSCON.evtg_out0a}
 - {id: SYSCON.FREQMETARGETCLKSEL.sel, value: SYSCON.evtg_out0a}
@@ -344,9 +347,11 @@ void BOARD_BootClockPLL150M(void)
 
     /*!< Set up clock selectors  */
     CLOCK_AttachClk(kPLL0_to_MAIN_CLK);
+    CLOCK_AttachClk(kFRO12M_to_ADC1);                 /*!< Switch ADC1 to FRO12M */
 
     /*!< Set up dividers */
     CLOCK_SetClkDiv(kCLOCK_DivAhbClk, 1U);           /*!< Set AHBCLKDIV divider to value 1 */
+    CLOCK_SetClkDiv(kCLOCK_DivAdc1Clk, 1U);           /*!< Set ADC1CLKDIV divider to value 1 */
 
     /* Set SystemCoreClock variable */
     SystemCoreClock = BOARD_BOOTCLOCKPLL150M_CORE_CLOCK;

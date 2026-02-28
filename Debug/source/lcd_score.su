@@ -1,3 +1,5 @@
 ../source/lcd_score.c:7:13:lcd_print_u16_2digits	24	static
 ../source/lcd_score.c:15:6:lcd_score_init	8	static
 ../source/lcd_score.c:23:6:lcd_show_score	16	static
+../source/lcd_score.c:35:6:lcd_show_timer	24	static
+../source/lcd_score.c:50:6:lcd_clear_timer	8	static

@@ -83,6 +83,86 @@ void BOARD_InitBootPins(void);
 #define BOARD_INITPINS_HCSR04_ECHO_PIN_MASK (1U << 23U)      /*!<@brief PORT pin mask */
                                                              /* @} */
 
+/*! @name PORT0_31 (coord D7), P0_31/J1[16]
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_INITPINS_BUZZ_GPIO GPIO0                /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITPINS_BUZZ_INIT_GPIO_VALUE 0U        /*!<@brief GPIO output initial state */
+#define BOARD_INITPINS_BUZZ_GPIO_PIN 31U              /*!<@brief GPIO pin number */
+#define BOARD_INITPINS_BUZZ_GPIO_PIN_MASK (1U << 31U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_BUZZ_PORT PORT0                /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_BUZZ_PIN 31U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_BUZZ_PIN_MASK (1U << 31U)      /*!<@brief PORT pin mask */
+                                                      /* @} */
+
+/*! @name PORT4_2 (coord T1), P4_2/J1[4]
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_INITPINS_START_STOP_GPIO GPIO4               /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITPINS_START_STOP_GPIO_PIN 2U              /*!<@brief GPIO pin number */
+#define BOARD_INITPINS_START_STOP_GPIO_PIN_MASK (1U << 2U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_START_STOP_PORT PORT4               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_START_STOP_PIN 2U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_START_STOP_PIN_MASK (1U << 2U)      /*!<@brief PORT pin mask */
+                                                           /* @} */
+
+/*! @name PORT4_3 (coord U1), P4_3/J1[2]
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_INITPINS_RESET_GPIO GPIO4               /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITPINS_RESET_GPIO_PIN 3U              /*!<@brief GPIO pin number */
+#define BOARD_INITPINS_RESET_GPIO_PIN_MASK (1U << 3U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_RESET_PORT PORT4               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_RESET_PIN 3U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_RESET_PIN_MASK (1U << 3U)      /*!<@brief PORT pin mask */
+                                                      /* @} */
+
+/*! @name PORT0_28 (coord E8), P0_28/J2[2]
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_INITPINS_SERVO_GPIO GPIO0                /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITPINS_SERVO_INIT_GPIO_VALUE 0U        /*!<@brief GPIO output initial state */
+#define BOARD_INITPINS_SERVO_GPIO_PIN 28U              /*!<@brief GPIO pin number */
+#define BOARD_INITPINS_SERVO_GPIO_PIN_MASK (1U << 28U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_SERVO_PORT PORT0                /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_SERVO_PIN 28U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_SERVO_PIN_MASK (1U << 28U)      /*!<@brief PORT pin mask */
+                                                       /* @} */
+
+/*! @name ADC1_A0 (coord T2), ANA_4/ADC1_A0/J6[1]
+  @{ */
+/* @} */
+
+/*! @name PORT0_26 (coord F10), P0_26/J2[10]
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_INITPINS_SWITCH_GPIO GPIO0                /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITPINS_SWITCH_GPIO_PIN 26U              /*!<@brief GPIO pin number */
+#define BOARD_INITPINS_SWITCH_GPIO_PIN_MASK (1U << 26U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITPINS_SWITCH_PORT PORT0                /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITPINS_SWITCH_PIN 26U                   /*!<@brief PORT pin number */
+#define BOARD_INITPINS_SWITCH_PIN_MASK (1U << 26U)      /*!<@brief PORT pin mask */
+                                                        /* @} */
+
+/*! @name ADC1_A3 (coord U2), ANA_6/ADC0_A3/J3[2]
+  @{ */
+/* @} */
+
 /*!
  * @brief Configures pin routing and optionally pin electrical features.
  *

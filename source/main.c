@@ -1,24 +1,63 @@
 #include "fsl_device_registers.h"
 #include "fsl_clock.h"
 #include "fsl_lpi2c.h"              //LPI2C driver (used for OLED and LCD)
+#include "fsl_port.h"
+#include "fsl_gpio.h"
 #include "clock_config.h"
 #include "board.h"
 #include "app.h"
 #include "fsl_debug_console.h"
+#include "fsl_common.h"            //SDK_DelayAtLeastUs
 #include "i2c_bus.h"                //Small helper module used by OLED and LCD (Share same bus)
 #include "oled.h"                   //OLED driver
 #include "lcd_score.h"              //Score display on the 16x2 character LCD
 #include "distance_sensor.h"        //HC-SR04 distance sensor driver
+#include "pot.h"                    //Potentiometer (ADC) driver
 #include "game_config.h"            //Game settings (screen size, paddle size, speeds etc)
 #include "game_logic.h"             //Physics/collisions/scoring logic
 #include "framebuffer.h"            //Buffer in RAM that represents OLED pixels
 #include "draw.h"                   //Drawing paddles/ball/border
 #include <stdint.h>
 #include <stdbool.h>
+#include "servo.h"                  //SG90 servo driver
+#include "buzzer.h"                 //Buzzer driver (PIO0_31)
 
-#define AI_REACT_EVERY_N_FRAMES  3	//AI paddle reacts every N frames
+#define AI_REACT_EVERY_N_FRAMES  5	//AI paddle reacts every N frames
 #define AI_DEADZONE_PIXELS       2	//Ball is within N pixels of AI paddle center, then paddle won't move
-#define AI_HESITATE_PERCENT      15	//Percentage chance that the AI will hesitate (do nothing)
+#define AI_HESITATE_PERCENT      25	//Percentage chance that the AI will hesitate (do nothing)
+
+#define BUZZER_BEEP_FRAMES       3      //Frames to keep buzzer on per point (~60ms at 50Hz)
+
+#define BUTTON_GPIO              GPIO4  //GPIO port for start/pause button (PIO4_2)
+#define BUTTON_PIN               2u     //GPIO pin for button (GPIO4_2, active low with external pull-up)
+#define BUTTON_DEBOUNCE_FRAMES   1      //Hardware RC filter handles bounce; 1 frame (20ms) is enough to register a press
+#define SERVE_INITIAL_FRAMES     25     //Frames before first auto-serve after pressing START (~1s accounting for I2C overhead)
+
+#define TIMER_TOTAL_SECONDS      30u    //Game countdown duration in seconds
+#define FRAME_PERIOD_US         20000u //Target frame period = 20ms (50Hz)
+
+#define GAME_OVER_DISPLAY_MS     3000u  //Show Game Over screen before returning to menu
+
+#define RESET_GPIO               GPIO4  //GPIO port for reset button (PIO4_3)
+#define RESET_PIN                3u     //GPIO pin for reset button (GPIO4_3, active low with external pull-up)
+
+#define SWITCH_GPIO              GPIO0  //GPIO port for mode select switch (PIO0_26)
+#define SWITCH_PIN               26u    //GPIO pin for mode select switch (1=Distance Sensor, 0=Potentiometer)
+
+//Game state: show start menu, running, or paused
+typedef enum {
+	STATE_MENU_MAIN,   //Main menu showing PONG title
+	STATE_MODE_SELECT, //Gamemode selection screen (Distance Sensor vs Potentiometer)
+	STATE_RUNNING,     //Game is live
+	STATE_PAUSED,      //Ball and AI frozen, press button to resume
+	STATE_GAME_OVER    //Time up, show Game Over screen briefly
+} GameState;
+
+//Gamemode: switch position selects the full control scheme
+typedef enum {
+	MODE_DISTANCE_SENSOR, //Left paddle uses HC-SR04, right paddle uses AI
+	MODE_POTENTIOMETER    //Left paddle uses potentiometer 1, right paddle uses potentiometer 2
+} GameMode;
 
 //Function that generates a random number each time it is called
 //static allows variable to hold value across multiple function calls, it won't reset each time
@@ -52,7 +91,7 @@ static void updateAiPaddle(int *paddleTopY, int ballCenterY, int frameCount) {
 	int paddleCenterY = *paddleTopY + (PADDLE_H / 2); //Works out paddle center Y position
 	int diff = ballCenterY - paddleCenterY; //Compares it to ball center Y position ('diff' positive then ball lower on screen)
 
-	if (diff > AI_DEADZONE_PIXELS)  //If ball below paddle center by more than deadzone
+	if (diff > AI_DEADZONE_PIXELS) //If ball below paddle center by more than deadzone
 		(*paddleTopY)++; 			//Move paddle down
 	if (diff < -AI_DEADZONE_PIXELS)	//If ball above paddle center by more than deadzone
 		(*paddleTopY)--; 			//Move paddle above
@@ -60,11 +99,31 @@ static void updateAiPaddle(int *paddleTopY, int ballCenterY, int frameCount) {
 	*paddleTopY = clampValueToRange(*paddleTopY, 1, 62 - PADDLE_H); //Clamp paddle so it stays on screen
 }
 
+//Function adjusts ball Y velocity based on where it hits the paddle (3-zone approach)
+//Top third: strong upward angle | Middle third: normal | Bottom third: strong downward angle
+static void adjustBallAngleFromPaddleHit(int *ballVelocityY, int ballCenterY, int paddleTopY) {
+	const int paddleThird = PADDLE_H / 3; //Each zone is 6 pixels (18/3)
+	int hitOffset = ballCenterY - paddleTopY; //Where on paddle the ball hit (0 = top, 17 = bottom)
+
+	//Top third of paddle: strong angle upward
+	if (hitOffset < paddleThird) {
+		*ballVelocityY = -2; //Strong upward trajectory
+	}
+	//Bottom third of paddle: strong angle downward
+	else if (hitOffset >= (paddleThird * 2)) {
+		*ballVelocityY = 2; //Strong downward trajectory
+	}
+	//Middle third: normal bounce (no Y velocity change)
+	else {
+		*ballVelocityY = 0; //Flat bounce
+	}
+}
+
 //Function converts the measured hand distance from sensor (cm) into a paddle Y position (top of paddle)
 //Range of distance sensor set by cmNear and cmFar
 static int mapDistanceCmToPaddleY(float cm) {
-	const float cmNear = 5.0f; //Closest distance that will move paddle down (pixel value highest)
-	const float cmFar = 35.0f; //Farthest distance that will move paddle up (pixel value lowest)
+	const float cmNear = 6.0f; //Closest distance that will move paddle down (pixel value highest)
+	const float cmFar = 18.0f; //Farthest distance that will move paddle up (pixel value lowest)
 
 	if (cm < cmNear) //If distance less than closest boundary
 		cm = cmNear; //Clamp it to the closest boundary
@@ -82,6 +141,38 @@ static int mapDistanceCmToPaddleY(float cm) {
 	return y; //Paddle top edge pixel number
 }
 
+//Function converts the potentiometer ADC value (0-4095) into a paddle Y position (top of paddle)
+static int mapPotentiometerTopaddleY(uint32_t potValue) {
+	//Clamp to valid ADC range
+	if (potValue > 4095U)
+		potValue = 4095U;
+
+	float t = (float) potValue / 4095.0f; //Normalised 0.0 to 1.0 (0=low, 4095=high)
+
+	//Allowed paddle Y range
+	const int yMin = 1;
+	const int yMax = 62 - PADDLE_H;
+
+	//Map potentiometer position to paddle Y (higher pot value = lower paddle position)
+	int y = (int) ((1.0f - t) * (yMax - yMin) + yMin); //Potentiometer inverted so max analogue value = top screen
+	return y;
+}
+
+//Enable the CPU cycle counter so frame timing uses real elapsed time instead of assuming every loop is identical
+static void initCycleCounter(void) {
+	CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+#ifdef DWT_LAR
+	DWT->LAR = 0xC5ACCE55u; //Unlock CYCCNT on devices that protect DWT writes
+#endif
+	DWT->CYCCNT = 0u;
+	DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+//Convert CPU cycles into microseconds (64-bit math avoids overflow during the multiply)
+static uint32_t cyclesToUs(uint32_t cycles, uint32_t cpuFreqHz) {
+	return (uint32_t) (((uint64_t) cycles * 1000000ULL) / (uint64_t) cpuFreqHz);
+}
+
 int main(void) {
 	BOARD_InitHardware();
 
@@ -93,16 +184,35 @@ int main(void) {
 	hcsr04_t sensor = { .trigGpio = GPIO0, .trigPin = 29u, .echoGpio = GPIO1,
 			.echoPin = 23u, };
 
-    // Sensor 2: Controls right paddle
-    hcsr04_t sensor2 = {	.trigGpio = GPIO1, .trigPin = 10u,.echoGpio = GPIO1,
-        .echoPin = 11u	};
-
 	CLOCK_EnableClock(kCLOCK_Gpio0);
 	CLOCK_EnableClock(kCLOCK_Gpio1);
 
 	//Initialises this so readings from distance sensors can be taken
 	HCSR04_Init(&sensor);
-	HCSR04_Init(&sensor2);
+
+	//Initialise both potentiometers (left = ADC1_A0, right = ADC1_A3)
+	Pot_Init();
+
+	//Initialise buzzer on PIO0_31
+	Buzzer_Init();
+
+	//Initialise servo on GPIO0_28 (GPIO0 clock already enabled above)
+	Servo_Init();
+	//Set servo to far left (0 degrees) on startup
+	Servo_Update(SERVO_TRACKING, 0);
+
+	//Initialise reset button pin as input (PORT4/GPIO4 clocks already enabled by BOARD_InitPins)
+	PORT_SetPinMux(PORT4, RESET_PIN, kPORT_MuxAlt0); //Set PIO4_3 to GPIO function
+	PORT4->PCR[RESET_PIN] |= PORT_PCR_IBE(PCR_IBE_ibe1);   //Enable input buffer
+	gpio_pin_config_t reset_config = { kGPIO_DigitalInput, 0 };
+	GPIO_PinInit(RESET_GPIO, RESET_PIN, &reset_config);
+
+	//Initialise mode select switch pin as input (PIO0_26)
+	PORT_SetPinMux(PORT0, SWITCH_PIN, kPORT_MuxAlt0); //Set PIO0_26 to GPIO function
+	PORT0->PCR[SWITCH_PIN] |= PORT_PCR_IBE(PCR_IBE_ibe1);   //Enable input buffer
+	PORT0->PCR[SWITCH_PIN] |= PORT_PCR_PE_MASK | PORT_PCR_PS_MASK; //Enable weak pull-up so the input doesn't float
+	gpio_pin_config_t switch_config = { kGPIO_DigitalInput, 0 };
+	GPIO_PinInit(SWITCH_GPIO, SWITCH_PIN, &switch_config);
 
 	//Initialises score on LCD as 0-0
 	lcd_show_score(0, 0);
@@ -126,174 +236,468 @@ int main(void) {
 	int frameCount = 0;
 	int servePauseFrames = 0;
 
+	GameState gameState = STATE_MENU_MAIN; //Start on main menu
+	GameMode gameMode = MODE_DISTANCE_SENSOR; //Default to distance sensor, will be set by user on mode select
+
 	uint16_t scoreLeft = 0;
 	uint16_t scoreRight = 0;
 
 	//LCD is only updated when score changes not every frame, this ensures it updates LCD score immediately to 0-0 at the start
-	//0xFFFF very safe as every bit turned on (65535), so last score never equals score
+	//0xFFFF is very safe as every bit turned on (65535), so last score never equals score at the start
 	uint16_t lastScoreLeft = 0xFFFFu;
 	uint16_t lastScoreRight = 0xFFFFu;
 
+	//Timer: counts down from TIMER_TOTAL_SECONDS to 0, only decrements while in STATE_RUNNING
+	//Pretend the previous time something completely different, so the game is forced to draw the timer the first time it runs
+	uint32_t timerSeconds = TIMER_TOTAL_SECONDS;
+	uint32_t lastTimerSecs = 0xFFFFFFFFu;    //Force first draw when game starts
+	uint32_t timerAccumUs = 0u; //Accumulate real elapsed time while the game is running
+	uint32_t gameOverFrames = 0u; //Frame counter for Game Over screen display duration
+
+	uint32_t cpu_freq = CLOCK_GetFreq(kCLOCK_CoreSysClk);
+	initCycleCounter();
+	uint32_t lastLoopCycle = DWT->CYCCNT;
+	bool wasRunningLastLoop = false;
+
 	while (1) {
+		uint32_t loopStartCycle = DWT->CYCCNT;
+		uint32_t elapsedUs = cyclesToUs(loopStartCycle - lastLoopCycle, cpu_freq);
+		lastLoopCycle = loopStartCycle;
+
+		//Countdown uses real elapsed time, so LCD stays accurate even if I2C/sensor/debug work makes some frames longer
+		if (wasRunningLastLoop && timerSeconds > 0u) {
+			timerAccumUs += elapsedUs;
+			while (timerAccumUs >= 1500000u && timerSeconds > 0u) {
+				timerAccumUs -= 1500000u;
+				timerSeconds--;
+				if (timerSeconds == 0u) {
+					gameState = STATE_GAME_OVER;
+					gameOverFrames = 0u;
+					break;
+				}
+			}
+		}
+
 		frameCount++;
+
+		//Read start/pause button (active low: pin reads 0 when pressed against pull-up)
+		//Debounce: button state must be stable for BUTTON_DEBOUNCE_FRAMES consecutive frames
+		static bool btnPrev = true; //Last stable button state (true = not pressed)
+		static uint32_t btnDebounce = 0; //Count of frames where raw state differs from stable state
+		static bool menuNeedsRender = true; //Flag to trigger menu screen redraw
+		static bool modeNeedsRender = true; //Flag to trigger mode select screen redraw
+		bool btnRaw = (bool) GPIO_PinRead(BUTTON_GPIO, BUTTON_PIN); //1=released, 0=pressed
+		if (btnRaw != btnPrev) {
+			btnDebounce++;
+			if (btnDebounce >= BUTTON_DEBOUNCE_FRAMES) { //Stable for enough frames
+				btnPrev = btnRaw;
+				btnDebounce = 0;
+				if (!btnRaw) {     //Falling edge detected = button just pressed
+					if (gameState == STATE_MENU_MAIN) {
+						gameState = STATE_MODE_SELECT; //Enter gamemode selection
+						modeNeedsRender = true; //Trigger mode select screen render
+					} else if (gameState == STATE_MODE_SELECT) {
+						//Confirm mode selection and start game
+						gameState = STATE_RUNNING;
+						servePauseFrames = SERVE_INITIAL_FRAMES;
+						timerSeconds = TIMER_TOTAL_SECONDS;
+						lastTimerSecs = 0xFFFFFFFFu;
+						timerAccumUs = 0u;
+						gameOverFrames = 0u;
+						lastScoreLeft = scoreLeft; //Sync score so LCD updates but buzzer doesn't fire
+						lastScoreRight = scoreRight;
+					} else if (gameState == STATE_RUNNING) {
+						gameState = STATE_PAUSED;   //Press during game: pause
+					} else if (gameState == STATE_PAUSED) {
+						gameState = STATE_RUNNING;  //Press while paused: resume
+					}
+				}
+			}
+		} else {
+			btnDebounce = 0;  //Reset debounce counter whenever state is stable
+		}
+
+		//Reset button: RESET from any game state returns to main menu
+		static bool resetPrev = true;
+		static uint32_t resetDebounce = 0;
+		bool resetRaw = (bool) GPIO_PinRead(RESET_GPIO, RESET_PIN);
+		if (resetRaw != resetPrev) {
+			resetDebounce++;
+			if (resetDebounce >= BUTTON_DEBOUNCE_FRAMES) {
+				resetPrev = resetRaw;
+				resetDebounce = 0;
+				if (!resetRaw) {  //Button just pressed
+					if (gameState == STATE_RUNNING
+							|| gameState == STATE_PAUSED
+							|| gameState == STATE_GAME_OVER
+							|| gameState == STATE_MODE_SELECT) {
+						//Return to main menu from any game state
+						gameState = STATE_MENU_MAIN;
+						menuNeedsRender = true;       //Trigger main menu redraw
+						scoreLeft = 0;
+						scoreRight = 0;
+						lastScoreLeft = 0xFFFFu;
+						lastScoreRight = 0xFFFFu;
+						ballX = BALL_SPAWN_LEFT_X;
+						ballY = BALL_SPAWN_Y;
+						ballVelocityX = 4;
+						ballVelocityY = 2;
+						servePauseFrames = 0;
+						leftPaddleTopY = 24;
+						rightPaddleTopY = 24;
+						timerSeconds = TIMER_TOTAL_SECONDS;
+						lastTimerSecs = 0xFFFFFFFFu;
+						timerAccumUs = 0u;
+						gameOverFrames = 0u;
+						lcd_show_score(0, 0);
+						lcd_clear_timer();
+						Buzzer_Stop();
+					}
+				}
+			}
+		} else {
+			resetDebounce = 0;
+		}
+
+		//Read mode select switch every frame so the control method can be changed immediately
+		GameMode switchMode =
+				GPIO_PinRead(SWITCH_GPIO, SWITCH_PIN) ?
+						MODE_DISTANCE_SENSOR : MODE_POTENTIOMETER;
+		if (switchMode != gameMode) {
+			gameMode = switchMode;
+			if (gameState == STATE_MODE_SELECT) {
+				modeNeedsRender = true; //Refresh highlight when the switch changes on the selection screen
+			}
+		}
 
 		int ballCenterY = ballY + 1; //The ball is 2 pixels tall so adding 1 gives bottom pixel ball value
 
-		//Left paddle is controlled by distance sensor, need a sensor frame counter as reading it every frame can cause noise
-		//Count frames since last sensor read
+		//Refresh buzzer output every frame so the beep length is non-blocking
+		Buzzer_Update();
+
+		//Left paddle controlled by distance sensor OR potentiometer based on gameMode
+		//Always update so player can position paddle before/after game
 		static int sensorFrameCounter = 0;
 		sensorFrameCounter++;
+		static float lastSensorCm = 0.0f; //Most recent valid raw reading (for debug print)
+		static bool lastSensorValid = false; //True once at least one valid reading has been received
 
-		if (sensorFrameCounter >= 2) //Read sensor value every 2 frames
-				{
-			sensorFrameCounter = 0;	//Reset counter so it counts again until next read
+		if (gameMode == MODE_DISTANCE_SENSOR) {
+			//Distance sensor mode with EMA smoothing
+			if (sensorFrameCounter >= 3) { //Read sensor every 3 frames (60ms)
+				sensorFrameCounter = 0;
 
-			float cm; //Variable to store measured distance
+				float cm;
+				static float smoothedCm = 12.0f; //EMA smoothed distance (starting value middle of 6 and 18cm)
 
-			//Try to read sensor, if it returns true then reading is valid and 'cm' has the distance
-			if (HCSR04_ReadCm(&sensor, &cm)) {
-				leftPaddleTopY = mapDistanceCmToPaddleY(cm); //Convert distance into a paddle top edge Y position on screen
-				leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1, 62 - PADDLE_H); //Clamp paddle so it stays in area
+				if (HCSR04_ReadCm(&sensor, &cm)) {
+					if (cm < 6.0f)
+						cm = 6.0f;
+					if (cm > 18.0f)
+						cm = 18.0f;
+					smoothedCm = 0.35f * cm + 0.65f * smoothedCm; //EMA smoothing
+					leftPaddleTopY = mapDistanceCmToPaddleY(smoothedCm);
+					leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1,
+							62 - PADDLE_H);
+					lastSensorCm = cm;
+					lastSensorValid = true;
+				}
 			}
-		}
-
-		//Update right paddle, using AI for now to control
-		updateAiPaddle(&rightPaddleTopY, ballCenterY, frameCount);
-
-		// After someone scores, you pause the serve for a few frames, value set in game logic file
-		// If we’re still in the pause, count down
-		// If not paused, move the ball each frame by its set velocities
-		if (servePauseFrames > 0) {
-			servePauseFrames--;
 		} else {
-			ballX += ballVelocityX;
-			ballY += ballVelocityY;
-		}
+			//Left potentiometer mode with hysteresis to reduce paddle jitter
+			if (sensorFrameCounter >= 1) { //Fast update every frame
+				sensorFrameCounter = 0;
 
-		//If ball bounces off the top wall push ball back inside and reverse the Y direction
-		if (ballY <= 1) {
-			ballY = 1;
-			ballVelocityY = -ballVelocityY;
-		}
-
-		//If ball bounces of the bottom wall make it stay inside and reverse the Y direction (ball 2 pixels therefore ballY+1)
-		if (ballY + 1 >= 62) {
-			ballY = 61;
-			ballVelocityY = -ballVelocityY;
-		}
-
-		//Handles left paddle collision logic
-		//Only check the left paddle when the ball is moving left so the velocity is less than 0 (negative)
-		//And also when the ball reaches the left paddle's X position
-		if (ballVelocityX < 0 && ballX <= (int) leftPaddleX) {
-
-			//Check if the ball's vertical range overlaps the paddle's vertical range.
-			//Ball spans from ballY to ballY+1
-			//Paddle spans from leftPaddleTopY to leftPaddleTopY + PADDLE_H - 1
-			bool hitLeft = verticalRangesOverlap(ballY, ballY + 1,
-					leftPaddleTopY, leftPaddleTopY + (PADDLE_H - 1));
-
-			if (hitLeft) {
-				//If the ball hits the paddle
-				//Move it slightly away from paddle so it doesn't stick
-				//Reverse X velocity so it goes back to the right
-				ballX = (int) leftPaddleX + 1;
-				ballVelocityX = -ballVelocityX;
-			} else {
-				//Ball misses the paddle then the right player scores a point
-				scoreRight++;
-
-				//Reset the ball for next point
-				//The 'true' here means "serve to the right", this is a function from game logic file
-				//Also sets servePauseFrames so the game pauses briefly after a point
-				resetBallAfterPoint(&ballX, &ballY, &ballVelocityX,
-						&ballVelocityY, true, &servePauseFrames);
+				int32_t potRaw = Pot_ReadRaw();
+				if (potRaw >= 0) {
+					static int32_t lastPotRaw = -1;
+					if (lastPotRaw < 0 || (potRaw - lastPotRaw > 50)
+							|| (lastPotRaw - potRaw > 50)) {
+						lastPotRaw = potRaw;
+						leftPaddleTopY = mapPotentiometerTopaddleY(
+								(uint32_t) potRaw);
+						leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1,
+								62 - PADDLE_H);
+					}
+					lastSensorCm = (float) potRaw / 4095.0f * 12.0f; //Fake cm value for display
+					lastSensorValid = true;
+				}
 			}
 		}
 
-		// Right paddle scoring logic
-		// Only check the right paddle when the ball is moving right so the velocity must be greater than 0
-		// And also when the ball has reached the right paddle's X position
-		if (ballVelocityX > 0 && (ballX + 1) >= (int) rightPaddleX) {
+		//Right paddle behaviour depends on the selected switch position
+		//Potentiometer mode: right paddle uses potentiometer 2 (ADC1_A3)
+		//Distance sensor mode: right paddle is handled by AI while the game is running
+		if (gameMode == MODE_POTENTIOMETER) {
+			static int rightPotFrameCounter = 0;
+			rightPotFrameCounter++;
 
-			// Check if the ball's vertical range overlaps the paddle's vertical range.
-			// ball spans from ballY to ballY+1
-			// paddle spans from rightPaddleTopY to rightPaddleTopY + PADDLE_H - 1
-			bool hitRight = verticalRangesOverlap(ballY, ballY + 1,
-					rightPaddleTopY, rightPaddleTopY + (PADDLE_H - 1));
+			if (rightPotFrameCounter >= 2) { //Read every 2 frames to avoid ADC conflict with left pot
+				rightPotFrameCounter = 0;
 
-			if (hitRight) {
-				//Ball hit the right paddle
+				int32_t rightPotRaw = Pot_ReadRightRaw();
+				if (rightPotRaw >= 0) {
+					static int32_t lastRightPotRaw = -1;
+
+					if (lastRightPotRaw < 0 || (rightPotRaw - lastRightPotRaw > 50)
+							|| (lastRightPotRaw - rightPotRaw > 50)) {
+						lastRightPotRaw = rightPotRaw;
+						rightPaddleTopY = mapPotentiometerTopaddleY(
+								(uint32_t) rightPotRaw);
+						rightPaddleTopY = clampValueToRange(rightPaddleTopY, 1,
+								62 - PADDLE_H);
+					}
+				}
+			}
+		}
+
+		//All game updates (AI, ball movement, collisions, scoring) only run while game is live
+		if (gameState == STATE_RUNNING) {
+
+			//In distance sensor mode, the right paddle is controlled by AI.
+			if (gameMode == MODE_DISTANCE_SENSOR) {
+				updateAiPaddle(&rightPaddleTopY, ballCenterY, frameCount);
+			}
+
+			// After someone scores, you pause the serve for a few frames, value set in game logic file
+			// If we're still in the pause, count down
+			// If not paused, move the ball each frame by its set velocities
+			if (servePauseFrames > 0) {
+				servePauseFrames--;
+			} else {
+				ballX += ballVelocityX;
+				ballY += ballVelocityY;
+			}
+
+			//If ball bounces off the top wall push ball back inside and reverse the Y direction
+			if (ballY <= 1) {
+				ballY = 1;
+				ballVelocityY = -ballVelocityY;
+			}
+
+			//If ball bounces of the bottom wall make it stay inside and reverse the Y direction (ball 2 pixels therefore ballY+1)
+			if (ballY + 1 >= 62) {
+				ballY = 61;
+				ballVelocityY = -ballVelocityY;
+			}
+
+			//Handles left paddle collision logic
+			//Only check the left paddle when the ball is moving left so the velocity is less than 0 (negative)
+			//And also when the ball reaches the left paddle's X position
+			if (ballVelocityX < 0 && ballX <= (int) leftPaddleX) {
+
+				//Check if the ball's vertical range overlaps the paddle's vertical range.
+				//Ball spans from ballY to ballY+1
+				//Paddle spans from leftPaddleTopY to leftPaddleTopY + PADDLE_H - 1
+				bool hitLeft = verticalRangesOverlap(ballY, ballY + 1,
+						leftPaddleTopY, leftPaddleTopY + (PADDLE_H - 1));
+
+				if (hitLeft) {
+				//Ball hits the paddle
+				//Adjust angle based on which third of paddle was hit
+				adjustBallAngleFromPaddleHit(&ballVelocityY, ballCenterY, leftPaddleTopY);
+
+				//Move ball slightly away from paddle so it doesn't stick
+					ballX = (int) leftPaddleX + 1;
+					ballVelocityX = -ballVelocityX;
+				} else {
+					//Ball misses the paddle then the right player scores a point
+					scoreRight++;
+
+					//Reset the ball for next point
+					//The 'true' here means "serve to the right", this is a function from game logic file
+					//Also sets servePauseFrames so the game pauses briefly after a point
+					resetBallAfterPoint(&ballX, &ballY, &ballVelocityX,
+							&ballVelocityY, true, &servePauseFrames);
+				}
+			}
+
+			// Right paddle scoring logic
+			// Only check the right paddle when the ball is moving right so the velocity must be greater than 0
+			// And also when the ball has reached the right paddle's X position
+			if (ballVelocityX > 0 && (ballX + 1) >= (int) rightPaddleX) {
+
+				// Check if the ball's vertical range overlaps the paddle's vertical range.
+				// ball spans from ballY to ballY+1
+				// paddle spans from rightPaddleTopY to rightPaddleTopY + PADDLE_H - 1
+				bool hitRight = verticalRangesOverlap(ballY, ballY + 1,
+						rightPaddleTopY, rightPaddleTopY + (PADDLE_H - 1));
+
+				if (hitRight) {
+					//Ball hit the right paddle
+				//Adjust angle based on which third of paddle was hit
+				adjustBallAngleFromPaddleHit(&ballVelocityY, ballCenterY, rightPaddleTopY);
+
 				//Move the ball away from paddle so it doesn't get stuck
-				//Reverse the X velocity so the ball goes back to the left
-				ballX = (int) rightPaddleX - 2;
-				ballVelocityX = -ballVelocityX;
-			} else {
-				////Ball misses the paddle then the left player scores a point
-				scoreLeft++;
+					ballX = (int) rightPaddleX - 2;
+					ballVelocityX = -ballVelocityX;
+				} else {
+					////Ball misses the paddle then the left player scores a point
+					scoreLeft++;
 
-				//Reset the ball for next point
-				//The 'false' here means "serve to the left", this is a function from game logic file
-				//Also sets servePauseFrames so the game pauses briefly after a point
-				resetBallAfterPoint(&ballX, &ballY, &ballVelocityX,
-						&ballVelocityY, false, &servePauseFrames);
+					//Reset the ball for next point
+					//The 'false' here means "serve to the left", this is a function from game logic file
+					//Also sets servePauseFrames so the game pauses briefly after a point
+					resetBallAfterPoint(&ballX, &ballY, &ballVelocityX,
+							&ballVelocityY, false, &servePauseFrames);
+				}
+			}
+
+			//Check if the score changed and if so update the LCD score
+			//Only update if the score has changed not every frame
+			//Save the new left and right scores
+			if (scoreLeft != lastScoreLeft || scoreRight != lastScoreRight) {
+				lcd_show_score(scoreLeft, scoreRight);
+				lastScoreLeft = scoreLeft;
+				lastScoreRight = scoreRight;
+				Buzzer_Beep(BUZZER_BEEP_FRAMES); //Trigger beep on point scored
+			}
+
+
+		} //end if (gameState == STATE_RUNNING)
+
+		//Game Over screen timeout: return to menu after a short delay
+		//GAME_OVER_DISPLAY_MS (3000ms) ÷ 20ms/frame = 150 frames
+		if (gameState == STATE_GAME_OVER) {
+			gameOverFrames++;
+			if (gameOverFrames >= (GAME_OVER_DISPLAY_MS / 20u)) { //3000ms ÷ 20ms = 150 frames
+				gameState = STATE_MENU_MAIN;
+				lcd_clear_timer();
+				lastTimerSecs = 0xFFFFFFFFu;
 			}
 		}
 
-		//Check if the score changed and if so update the LCD score
-		//Only update if the score has changed not every frame
-		//Save the new left and right scores
-		if (scoreLeft != lastScoreLeft || scoreRight != lastScoreRight) {
-			lcd_show_score(scoreLeft, scoreRight);
-			lastScoreLeft = scoreLeft;
-			lastScoreRight = scoreRight;
+		//Update timer on LCD row 2 whenever seconds value changes (runs outside STATE_RUNNING
+		//so the last value stays visible while paused, not shown at all on menu)
+		if (timerSeconds != lastTimerSecs
+				&& (gameState == STATE_RUNNING || gameState == STATE_PAUSED)) {
+			lcd_show_timer(timerSeconds);
+			lastTimerSecs = timerSeconds;
 		}
 
 		static int debugCounter = 0; //Initialise variable to track frames for debug output
 		debugCounter++;	//Increment the counter each frame
 
-		//Every 10 fames print the sensor distance
+		//Every 10 frames print debug info based on active mode
 		if ((debugCounter % 10) == 0) {
-			float cm;
-
-			//Read the distance from the sensor (HCSR04)
-			if (HCSR04_ReadCm(&sensor, &cm)) {
-
-				//The 'cm' is full distance, 'whole' is the integer part
-				//Cast 'cm' to an integer to get the whole number
-				//Subtract integer part from full distance to get decimal
-				//Multiply by 100 to represent part after decimal
-				int whole = (int) cm;
-				int dec = (int) ((cm - (float) whole) * 100.0f);
-
-				//Print the distance in "NN.NN cm" format
-				PRINTF("Distance: %d.%02d cm\r\n", whole, dec);
+			if (gameMode == MODE_DISTANCE_SENSOR) {
+				if (lastSensorValid) {
+					int whole = (int) lastSensorCm;
+					int dec = (int) ((lastSensorCm - (float) whole) * 100.0f);
+					PRINTF("Distance Sensor: %d.%02d cm\r\n", whole, dec);
+				} else {
+					PRINTF("Distance Sensor: ---\r\n");
+				}
 			} else {
-				//If the sensor fails to read a distance print "Distance: ---"
-				PRINTF("Distance: ---\r\n");
+				// Left potentiometer mode - read current value for debug
+				int32_t potRaw = Pot_ReadRaw();
+				if (potRaw >= 0) {
+					PRINTF("Left Potentiometer: %ld / 4095\r\n", (long) potRaw);
+				} else {
+					PRINTF("Left Potentiometer: Read Error!\r\n");
+				}
+			}
+
+			if (gameMode == MODE_POTENTIOMETER) {
+				//In potentiometer mode the right paddle uses potentiometer 2
+				int32_t rightPotRaw = Pot_ReadRightRaw();
+				if (rightPotRaw >= 0) {
+					PRINTF("Right Pot: %ld / 4095 -> Y=%d\r\n", (long) rightPotRaw, rightPaddleTopY);
+				} else {
+					PRINTF("Right Pot: TIMEOUT/ERROR\r\n");
+				}
+			} else {
+				PRINTF("Right Paddle: AI (Y=%d)\r\n", rightPaddleTopY);
 			}
 		}
 
-		//Clear the frame buffer before drawing new frame (set all pixels to 0x00 = black)
-		fb_clear(0x00);
+		//Render: menu uses direct OLED text writes; game uses the framebuffer
+		//Render flags ensure menu text is only written once (avoids flicker from redrawing every frame)
+		static bool gameOverNeedsRender = true;
 
-		//Draw the borders for the game
-		draw_top_border();
-		draw_bottom_border();
-		draw_side_borders();
+		if (gameState == STATE_MENU_MAIN) {
+			if (menuNeedsRender) {
+				fillOLED(0x00);                              //Clear the display
+				writeString((char*) "PONG", false, 52, 2); //Title, centred
+				writeString((char*) "Press START", false, 22, 4); //Go to mode select
+				writeString((char*) "to select mode", false, 22, 5);
+				menuNeedsRender = false;
+			}
+			gameOverNeedsRender = true;
+		} else if (gameState == STATE_MODE_SELECT) {
+			//Mode selection screen with cursor highlighting
+			if (modeNeedsRender) {
+				fillOLED(0x00);                                  //Clear display
+				writeString((char*) "SELECT MODE", false, 31, 1); //Title, centred (11 chars × 6px = 66px, (128-66)/2 = 31)
 
-		//Draw the left and right paddles at the current position, X always same, Y changes
-		draw_paddle(leftPaddleX, leftPaddleTopY, PADDLE_H);
-		draw_paddle(rightPaddleX, rightPaddleTopY, PADDLE_H);
+				//Show Distance Sensor option with highlight if selected
+				if (gameMode == MODE_DISTANCE_SENSOR) {
+					writeString((char*) ">>Distance Sensor<<", false, 7, 3);  //Highlighted, centred (19 chars)
+				} else {
+					writeString((char*) "Distance Sensor", false, 19, 3);     //Normal, centred (15 chars)
+				}
 
-		//Draw the ball at its current X,Y position
-		draw_ball(ballX, ballY);
+				//Show Potentiometer option with highlight if selected
+				if (gameMode == MODE_POTENTIOMETER) {
+					writeString((char*) ">>Potentiometer<<", false, 13, 5);   //Highlighted, centred (17 chars)
+				} else {
+					writeString((char*) "Potentiometer", false, 25, 5);       //Normal, centred (13 chars)
+				}
 
-		//Push the frame buffer to the OLED display to actually show the updated frame
-		fb_flush_to_oled();
+				modeNeedsRender = false;
+			}
+			gameOverNeedsRender = true;
+		} else if (gameState == STATE_GAME_OVER) {
+			menuNeedsRender = true;     //Trigger main menu redraw on return
+			modeNeedsRender = true; //Ensure mode select can render if entered again
+			if (gameOverNeedsRender) {
+				fillOLED(0x00); //Clear the display
+				writeString((char*) "GAME OVER", false, 34, 2);
+				writeString((char*) "Returning to menu", false, 7, 4);
+				gameOverNeedsRender = false;
+			}
+		} else {
+			menuNeedsRender = true; //Reset so menu redraws correctly if ever re-entered
+			modeNeedsRender = true; //Reset so mode select redraws if entered again
+			gameOverNeedsRender = true;
 
-		// Add a small delay to make the game playable at a reasonable speed (around 50 Hz refresh rate)
-		// This delay is 20 ms (20,000 µs)
-		SDK_DelayAtLeastUs(20000u, CLOCK_GetFreq(kCLOCK_CoreSysClk));
+			//Clear the frame buffer before drawing new frame (set all pixels to 0x00 = black)
+			fb_clear(0x00);
+
+			//Draw the borders for the game
+			draw_top_border();
+			draw_bottom_border();
+			draw_side_borders();
+
+			//Draw the left and right paddles at the current position, X always same, Y changes
+			draw_paddle(leftPaddleX, leftPaddleTopY, PADDLE_H);
+			draw_paddle(rightPaddleX, rightPaddleTopY, PADDLE_H);
+
+			//Draw the ball at its current X,Y position
+			draw_ball(ballX, ballY);
+
+			//Push the frame buffer to the OLED display to actually show the updated frame
+			fb_flush_to_oled();
+		}
+
+		//SERVO_OFF:      no pulse (menu, motor de-energizes)
+		ServoState servoState;
+		if (gameState == STATE_RUNNING) {
+			servoState = SERVO_TRACKING;
+		} else if (gameState == STATE_PAUSED) {
+			servoState = SERVO_HOLD;
+		} else {
+			servoState = SERVO_OFF;
+		}
+		Servo_Update(servoState, timerSeconds);
+
+		//Keep the full frame close to 20ms by subtracting the ACTUAL work time of this loop
+		uint32_t workUs = cyclesToUs(DWT->CYCCNT - loopStartCycle, cpu_freq);
+		uint32_t remaining_us = (workUs < FRAME_PERIOD_US) ? (FRAME_PERIOD_US - workUs) : 0u;
+		if (remaining_us > 0u) {
+			SDK_DelayAtLeastUs(remaining_us, cpu_freq);
+		}
+
+		wasRunningLastLoop = (gameState == STATE_RUNNING);
 	}
 }

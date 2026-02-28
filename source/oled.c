@@ -481,6 +481,17 @@ void writeChar(uint8_t character, bool inverted)
     sendOLED((uint8_t *)&font[character][0], 6, OLED_DATA);
 }
 
+void writeString(char *string, bool inverted, uint8_t seg, uint8_t page)
+{
+    setPage(page);
+    setSeg(seg);
+    while (*string)
+    {
+        writeChar((uint8_t)*string, inverted);
+        string++;
+    }
+}
+
 void lineWrap(void)
 {
     if (currCharLoc[0] >= 21)

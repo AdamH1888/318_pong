@@ -2,6 +2,7 @@
 #include "clock_config.h"
 #include "board.h"
 #include "fsl_clock.h"
+#include "peripherals.h"
 
 void BOARD_InitHardware(void) {
 	/* attach FRO 12M to FLEXCOMM4 (debug console) */
@@ -15,6 +16,11 @@ void BOARD_InitHardware(void) {
 	BOARD_InitBootPins();
 	BOARD_InitBootClocks();
 	BOARD_InitDebugConsole();
+
+	/* Enable ADC1 clock then call BOARD_InitPeripherals which initialises
+	   VREF0 (required as ADC reference) and ADC1 */
+	CLOCK_EnableClock(kCLOCK_Adc1);
+	BOARD_InitPeripherals();
 
 	// Configure the clock for I2C
 	CLOCK_SetClkDiv(kCLOCK_DivFlexcom2Clk, 1u);

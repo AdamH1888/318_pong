@@ -1,0 +1,5 @@
+C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_spc.h:1093:20:SPC_EnableActiveModeAnalogModules	16	static
+../board/peripherals.c:142:13:ADC1_init	8	static
+../board/peripherals.c:182:13:VREF0_init	8	static
+../board/peripherals.c:192:6:BOARD_InitPeripherals	8	static
+../board/peripherals.c:202:6:BOARD_InitBootPeripherals	8	static

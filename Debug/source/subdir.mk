@@ -4,6 +4,7 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../source/buzzer.c \
 ../source/distance_sensor.c \
 ../source/draw.c \
 ../source/framebuffer.c \
@@ -13,9 +14,12 @@ C_SRCS += \
 ../source/lcd_score.c \
 ../source/main.c \
 ../source/oled.c \
-../source/semihost_hardfault.c 
+../source/pot.c \
+../source/semihost_hardfault.c \
+../source/servo.c 
 
 C_DEPS += \
+./source/buzzer.d \
 ./source/distance_sensor.d \
 ./source/draw.d \
 ./source/framebuffer.d \
@@ -25,9 +29,12 @@ C_DEPS += \
 ./source/lcd_score.d \
 ./source/main.d \
 ./source/oled.d \
-./source/semihost_hardfault.d 
+./source/pot.d \
+./source/semihost_hardfault.d \
+./source/servo.d 
 
 OBJS += \
+./source/buzzer.o \
 ./source/distance_sensor.o \
 ./source/draw.o \
 ./source/framebuffer.o \
@@ -37,7 +44,9 @@ OBJS += \
 ./source/lcd_score.o \
 ./source/main.o \
 ./source/oled.o \
-./source/semihost_hardfault.o 
+./source/pot.o \
+./source/semihost_hardfault.o \
+./source/servo.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -52,7 +61,7 @@ source/%.o: ../source/%.c source/subdir.mk
 clean: clean-source
 
 clean-source:
-	-$(RM) ./source/distance_sensor.d ./source/distance_sensor.o ./source/draw.d ./source/draw.o ./source/framebuffer.d ./source/framebuffer.o ./source/game_logic.d ./source/game_logic.o ./source/i2c_bus.d ./source/i2c_bus.o ./source/lcd.d ./source/lcd.o ./source/lcd_score.d ./source/lcd_score.o ./source/main.d ./source/main.o ./source/oled.d ./source/oled.o ./source/semihost_hardfault.d ./source/semihost_hardfault.o
+	-$(RM) ./source/buzzer.d ./source/buzzer.o ./source/distance_sensor.d ./source/distance_sensor.o ./source/draw.d ./source/draw.o ./source/framebuffer.d ./source/framebuffer.o ./source/game_logic.d ./source/game_logic.o ./source/i2c_bus.d ./source/i2c_bus.o ./source/lcd.d ./source/lcd.o ./source/lcd_score.d ./source/lcd_score.o ./source/main.d ./source/main.o ./source/oled.d ./source/oled.o ./source/pot.d ./source/pot.o ./source/semihost_hardfault.d ./source/semihost_hardfault.o ./source/servo.d ./source/servo.o
 
 .PHONY: clean-source
 

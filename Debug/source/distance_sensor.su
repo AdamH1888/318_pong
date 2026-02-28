@@ -1,5 +1,7 @@
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_gpio.h:345:20:GPIO_PinWrite	24	static
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_gpio.h:427:24:GPIO_PinRead	16	static
-../source/distance_sensor.c:8:13:ensure_systick_running	4	static
-../source/distance_sensor.c:23:6:HCSR04_Init	24	static
-../source/distance_sensor.c:42:6:HCSR04_ReadCm	40	static
+../source/distance_sensor.c:15:24:SysTick_ElapsedTicks	24	static
+../source/distance_sensor.c:32:24:UsToTicks	40	static
+../source/distance_sensor.c:45:13:wait_for_echo_level	32	static
+../source/distance_sensor.c:62:6:HCSR04_Init	24	static
+../source/distance_sensor.c:84:6:HCSR04_ReadCm	32	static

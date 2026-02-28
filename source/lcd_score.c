@@ -29,3 +29,26 @@ void lcd_show_score(uint16_t left, uint16_t right)
     lcd_print_u16_2digits(right);	//Display the right score (2 digits)
     pcf8574_send_string("      ");	//Clear extra spaces
 }
+
+//Display countdown timer on LCD row 2 — format "Time: M:SS      " (16 chars)
+//seconds_remaining: value from 60 down to 0
+void lcd_show_timer(uint32_t seconds_remaining)
+{
+    uint32_t mins = seconds_remaining / 60u;
+    uint32_t secs = seconds_remaining % 60u;
+
+    pcf8574_cursor(1, 0);                               //Row 2, column 0
+    pcf8574_send_string("Time: ");                      //6 chars
+    pcf8574_send_data((uint8_t)('0' + (mins % 10u)));   //Minutes digit
+    pcf8574_send_data(':');
+    pcf8574_send_data((uint8_t)('0' + (secs / 10u)));   //Seconds tens
+    pcf8574_send_data((uint8_t)('0' + (secs % 10u)));   //Seconds ones
+    pcf8574_send_string("      ");                      //6 trailing spaces = 16 total
+}
+
+//Clear row 2 of the LCD — call when returning to menu so timer doesn't linger
+void lcd_clear_timer(void)
+{
+    pcf8574_cursor(1, 0);
+    pcf8574_send_string("                ");  //16 spaces
+}

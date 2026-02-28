@@ -95,19 +95,20 @@ source/main.o source/main.d: ../source/main.c \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_reset.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_lpi2c.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_lpflexcomm.h \
+ C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_port.h \
+ C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_gpio.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/clock_config.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_common.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/board.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/clock_config.h \
- C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_gpio.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/app.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\utilities\debug_console_lite/fsl_debug_console.h \
  ../source/i2c_bus.h ../source/oled.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/pin_mux.h \
  C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\device/MCXN947_cm33_core0.h \
- ../source/lcd_score.h ../source/distance_sensor.h \
+ ../source/lcd_score.h ../source/distance_sensor.h ../source/pot.h \
  ../source/game_config.h ../source/game_logic.h ../source/framebuffer.h \
- ../source/draw.h
+ ../source/draw.h ../source/servo.h ../source/buzzer.h
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\source\mcux_config.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\device/fsl_device_registers.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\device/MCXN947_cm33_core0.h:
@@ -204,11 +205,12 @@ C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\dri
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_reset.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_lpi2c.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_lpflexcomm.h:
+C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_port.h:
+C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_gpio.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/clock_config.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_common.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/board.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/clock_config.h:
-C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_gpio.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\board/app.h:
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\utilities\debug_console_lite/fsl_debug_console.h:
 ../source/i2c_bus.h:
@@ -217,7 +219,10 @@ C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\boa
 C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\device/MCXN947_cm33_core0.h:
 ../source/lcd_score.h:
 ../source/distance_sensor.h:
+../source/pot.h:
 ../source/game_config.h:
 ../source/game_logic.h:
 ../source/framebuffer.h:
 ../source/draw.h:
+../source/servo.h:
+../source/buzzer.h:

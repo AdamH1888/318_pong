@@ -7,18 +7,21 @@ C_SRCS += \
 ../board/board.c \
 ../board/clock_config.c \
 ../board/hardware_init.c \
+../board/peripherals.c \
 ../board/pin_mux.c 
 
 C_DEPS += \
 ./board/board.d \
 ./board/clock_config.d \
 ./board/hardware_init.d \
+./board/peripherals.d \
 ./board/pin_mux.d 
 
 OBJS += \
 ./board/board.o \
 ./board/clock_config.o \
 ./board/hardware_init.o \
+./board/peripherals.o \
 ./board/pin_mux.o 
 
 
@@ -34,7 +37,7 @@ board/%.o: ../board/%.c board/subdir.mk
 clean: clean-board
 
 clean-board:
-	-$(RM) ./board/board.d ./board/board.o ./board/clock_config.d ./board/clock_config.o ./board/hardware_init.d ./board/hardware_init.o ./board/pin_mux.d ./board/pin_mux.o
+	-$(RM) ./board/board.d ./board/board.o ./board/clock_config.d ./board/clock_config.o ./board/hardware_init.d ./board/hardware_init.o ./board/peripherals.d ./board/peripherals.o ./board/pin_mux.d ./board/pin_mux.o
 
 .PHONY: clean-board
 
