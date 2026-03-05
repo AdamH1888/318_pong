@@ -13,8 +13,8 @@
 #include "lcd_score.h"              //Score display on the 16x2 character LCD
 #include "distance_sensor.h"        //HC-SR04 distance sensor driver
 #include "pot.h"                    //Potentiometer (ADC) driver
-#include "game_config.h"            //Game settings (screen size, paddle size, speeds etc)
-#include "game_logic.h"             //Physics/collisions/scoring logic
+#include "game_config.h"            //Game settings (screen size, paddle size, speeds, enums etc)
+#include "game_logic.h"             //Physics/collisions/scoring/AI logic
 #include "framebuffer.h"            //Buffer in RAM that represents OLED pixels
 #include "draw.h"                   //Drawing paddles/ball/border
 #include <stdint.h>
@@ -22,141 +22,15 @@
 #include "servo.h"                  //SG90 servo driver
 #include "buzzer.h"                 //Buzzer driver (PIO0_31)
 
-#define AI_REACT_EVERY_N_FRAMES  5	//AI paddle reacts every N frames
-#define AI_DEADZONE_PIXELS       2	//Ball is within N pixels of AI paddle center, then paddle won't move
-#define AI_HESITATE_PERCENT      25	//Percentage chance that the AI will hesitate (do nothing)
-
-#define BUZZER_BEEP_FRAMES       3      //Frames to keep buzzer on per point (~60ms at 50Hz)
-
 #define BUTTON_GPIO              GPIO4  //GPIO port for start/pause button (PIO4_2)
 #define BUTTON_PIN               2u     //GPIO pin for button (GPIO4_2, active low with external pull-up)
 #define BUTTON_DEBOUNCE_FRAMES   1      //Hardware RC filter handles bounce; 1 frame (20ms) is enough to register a press
-#define SERVE_INITIAL_FRAMES     25     //Frames before first auto-serve after pressing START (~1s accounting for I2C overhead)
-
-#define TIMER_TOTAL_SECONDS      30u    //Game countdown duration in seconds
-#define FRAME_PERIOD_US         20000u //Target frame period = 20ms (50Hz)
-
-#define GAME_OVER_DISPLAY_MS     3000u  //Show Game Over screen before returning to menu
 
 #define RESET_GPIO               GPIO4  //GPIO port for reset button (PIO4_3)
 #define RESET_PIN                3u     //GPIO pin for reset button (GPIO4_3, active low with external pull-up)
 
 #define SWITCH_GPIO              GPIO0  //GPIO port for mode select switch (PIO0_26)
 #define SWITCH_PIN               26u    //GPIO pin for mode select switch (1=Distance Sensor, 0=Potentiometer)
-
-//Game state: show start menu, running, or paused
-typedef enum {
-	STATE_MENU_MAIN,   //Main menu showing PONG title
-	STATE_MODE_SELECT, //Gamemode selection screen (Distance Sensor vs Potentiometer)
-	STATE_RUNNING,     //Game is live
-	STATE_PAUSED,      //Ball and AI frozen, press button to resume
-	STATE_GAME_OVER    //Time up, show Game Over screen briefly
-} GameState;
-
-//Gamemode: switch position selects the full control scheme
-typedef enum {
-	MODE_DISTANCE_SENSOR, //Left paddle uses HC-SR04, right paddle uses AI
-	MODE_POTENTIOMETER    //Left paddle uses potentiometer 1, right paddle uses potentiometer 2
-} GameMode;
-
-//Function that generates a random number each time it is called
-//static allows variable to hold value across multiple function calls, it won't reset each time
-static uint32_t rngState = 0x12345678u;
-static uint32_t rngNext(void) {
-	rngState = (1103515245u * rngState + 12345u); //Standard commonly used RNG
-	return rngState;
-}
-
-//Function that clamps a value so it never goes below min or above max
-static int clampValueToRange(int value, int minimumAllowed, int maximumAllowed) {
-	if (value < minimumAllowed)
-		return minimumAllowed;
-	if (value > maximumAllowed)
-		return maximumAllowed;
-	return value;
-}
-
-//Function to move paddle up or down towards the ball while keeping paddle within screen limits
-//paddleTopY: pointer to directly modify the paddle's top edge Y position (At top of screen Y=1 down to Y=62)
-//Pointer can pass address of variable to function, allowing the function to modify the original variable directly
-//ballCenterY: the ball’s current Y (bottom Y pixel of ball)
-//frameCount: current frame number
-static void updateAiPaddle(int *paddleTopY, int ballCenterY, int frameCount) {
-	if ((frameCount % AI_REACT_EVERY_N_FRAMES) != 0) //Check if frames divisible by 3, if so move to next stage, if not AI does nothing
-		return;
-
-	if ((rngNext() % 100u) < AI_HESITATE_PERCENT) //Checks remainder when dividing RNG by 100, if less than the value selected it triggers hesitation
-		return;
-
-	int paddleCenterY = *paddleTopY + (PADDLE_H / 2); //Works out paddle center Y position
-	int diff = ballCenterY - paddleCenterY; //Compares it to ball center Y position ('diff' positive then ball lower on screen)
-
-	if (diff > AI_DEADZONE_PIXELS) //If ball below paddle center by more than deadzone
-		(*paddleTopY)++; 			//Move paddle down
-	if (diff < -AI_DEADZONE_PIXELS)	//If ball above paddle center by more than deadzone
-		(*paddleTopY)--; 			//Move paddle above
-
-	*paddleTopY = clampValueToRange(*paddleTopY, 1, 62 - PADDLE_H); //Clamp paddle so it stays on screen
-}
-
-//Function adjusts ball Y velocity based on where it hits the paddle (3-zone approach)
-//Top third: strong upward angle | Middle third: normal | Bottom third: strong downward angle
-static void adjustBallAngleFromPaddleHit(int *ballVelocityY, int ballCenterY, int paddleTopY) {
-	const int paddleThird = PADDLE_H / 3; //Each zone is 6 pixels (18/3)
-	int hitOffset = ballCenterY - paddleTopY; //Where on paddle the ball hit (0 = top, 17 = bottom)
-
-	//Top third of paddle: strong angle upward
-	if (hitOffset < paddleThird) {
-		*ballVelocityY = -2; //Strong upward trajectory
-	}
-	//Bottom third of paddle: strong angle downward
-	else if (hitOffset >= (paddleThird * 2)) {
-		*ballVelocityY = 2; //Strong downward trajectory
-	}
-	//Middle third: normal bounce (no Y velocity change)
-	else {
-		*ballVelocityY = 0; //Flat bounce
-	}
-}
-
-//Function converts the measured hand distance from sensor (cm) into a paddle Y position (top of paddle)
-//Range of distance sensor set by cmNear and cmFar
-static int mapDistanceCmToPaddleY(float cm) {
-	const float cmNear = 6.0f; //Closest distance that will move paddle down (pixel value highest)
-	const float cmFar = 18.0f; //Farthest distance that will move paddle up (pixel value lowest)
-
-	if (cm < cmNear) //If distance less than closest boundary
-		cm = cmNear; //Clamp it to the closest boundary
-	if (cm > cmFar)	 //If distance more than farthest boundary
-		cm = cmFar;  //Clamp it to the farthest boundary
-
-	float t = (cm - cmNear) / (cmFar - cmNear); //Normalised value, t=0=near, t=1=far
-
-	//Allowed paddle Y range (Taking into account height of paddle)
-	const int yMin = 1;
-	const int yMax = 62 - PADDLE_H;
-
-	//Picks a paddle pixel Y position between min and max based on distance (normalised t)
-	int y = (int) ((1.0f - t) * (yMax - yMin) + yMin); //t=0, 1-0=1, 1*(yMax - yMin) + yMin = yMax (Lowest point on screen, y = 62)
-	return y; //Paddle top edge pixel number
-}
-
-//Function converts the potentiometer ADC value (0-4095) into a paddle Y position (top of paddle)
-static int mapPotentiometerTopaddleY(uint32_t potValue) {
-	//Clamp to valid ADC range
-	if (potValue > 4095U)
-		potValue = 4095U;
-
-	float t = (float) potValue / 4095.0f; //Normalised 0.0 to 1.0 (0=low, 4095=high)
-
-	//Allowed paddle Y range
-	const int yMin = 1;
-	const int yMax = 62 - PADDLE_H;
-
-	//Map potentiometer position to paddle Y (higher pot value = lower paddle position)
-	int y = (int) ((1.0f - t) * (yMax - yMin) + yMin); //Potentiometer inverted so max analogue value = top screen
-	return y;
-}
 
 //Enable the CPU cycle counter so frame timing uses real elapsed time instead of assuming every loop is identical
 static void initCycleCounter(void) {
@@ -396,9 +270,7 @@ int main(void) {
 					if (cm > 18.0f)
 						cm = 18.0f;
 					smoothedCm = 0.35f * cm + 0.65f * smoothedCm; //EMA smoothing
-					leftPaddleTopY = mapDistanceCmToPaddleY(smoothedCm);
-					leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1,
-							62 - PADDLE_H);
+					leftPaddleTopY = HCSR04_MapToPaddleY(smoothedCm);
 					lastSensorCm = cm;
 					lastSensorValid = true;
 				}
@@ -414,10 +286,8 @@ int main(void) {
 					if (lastPotRaw < 0 || (potRaw - lastPotRaw > 50)
 							|| (lastPotRaw - potRaw > 50)) {
 						lastPotRaw = potRaw;
-						leftPaddleTopY = mapPotentiometerTopaddleY(
+						leftPaddleTopY = Pot_MapToPaddleY(
 								(uint32_t) potRaw);
-						leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1,
-								62 - PADDLE_H);
 					}
 					lastSensorCm = (float) potRaw / 4095.0f * 12.0f; //Fake cm value for display
 					lastSensorValid = true;
@@ -442,10 +312,8 @@ int main(void) {
 					if (lastRightPotRaw < 0 || (rightPotRaw - lastRightPotRaw > 50)
 							|| (lastRightPotRaw - rightPotRaw > 50)) {
 						lastRightPotRaw = rightPotRaw;
-						rightPaddleTopY = mapPotentiometerTopaddleY(
+						rightPaddleTopY = Pot_MapToPaddleY(
 								(uint32_t) rightPotRaw);
-						rightPaddleTopY = clampValueToRange(rightPaddleTopY, 1,
-								62 - PADDLE_H);
 					}
 				}
 			}

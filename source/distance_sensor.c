@@ -3,6 +3,7 @@
 #include "fsl_device_registers.h"
 #include "clock_config.h"
 #include "fsl_common.h"
+#include "game_config.h"
 
 /* --- Low-latency timing parameters --- */
 #define HCSR04_ECHO_RISE_TIMEOUT_US   (30000U)  // Wait for echo to start
@@ -126,4 +127,28 @@ bool HCSR04_ReadCm(const hcsr04_t *dev, float *outCm)
     
     *outCm = dist_cm;
     return true;
+}
+
+//Convert measured hand distance (cm) into a paddle top-edge Y position
+//Range: cmNear (6cm) maps to bottom of screen, cmFar (18cm) maps to top
+int HCSR04_MapToPaddleY(float cm) {
+	const float cmNear = 6.0f;
+	const float cmFar = 18.0f;
+
+	if (cm < cmNear)
+		cm = cmNear;
+	if (cm > cmFar)
+		cm = cmFar;
+
+	float t = (cm - cmNear) / (cmFar - cmNear);
+
+	const int yMin = 1;
+	const int yMax = 62 - PADDLE_H;
+
+	int y = (int) ((1.0f - t) * (yMax - yMin) + yMin);
+
+	if (y < yMin) y = yMin;
+	if (y > yMax) y = yMax;
+
+	return y;
 }

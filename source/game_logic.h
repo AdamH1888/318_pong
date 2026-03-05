@@ -11,4 +11,10 @@ void resetBallAfterPoint(
     bool serveToRight,
     int *servePauseFrames);
 
+//Move the AI paddle towards the ball, skipping some frames and adding hesitation
+void updateAiPaddle(int *paddleTopY, int ballCenterY, int frameCount);
+
+//Adjust ball Y velocity based on where it hits the paddle (top/middle/bottom third)
+void adjustBallAngleFromPaddleHit(int *ballVelocityY, int ballCenterY, int paddleTopY);
+
 #endif /* GAME_LOGIC_H */

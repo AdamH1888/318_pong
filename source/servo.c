@@ -1,13 +1,3 @@
-/*
- * Pulse formula:
- *   pulse_us = SERVO_MIN_PULSE_US + (angle_x10 * range / 1800)
- *   where angle_x10 = ballX * 1800 / 127
- *   With 500-2500us range:
- *     ballX=0   -> 500 us (0 deg)
- *     ballX=63  -> ~1500 us (90 deg)
- *     ballX=127 -> 2500 us (180 deg)
- */
-
 #include "servo.h"
 #include "fsl_gpio.h"
 #include "fsl_common.h"   /* SDK_DelayAtLeastUs                           */

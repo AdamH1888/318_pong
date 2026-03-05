@@ -23,6 +23,9 @@ void HCSR04_Init(const hcsr04_t *dev);
 /* Returns true if valid measurement; distance_cm written to *outCm */
 bool HCSR04_ReadCm(const hcsr04_t *dev, float *outCm);
 
+/* Convert measured hand distance (cm) into a paddle top-edge Y position */
+int HCSR04_MapToPaddleY(float cm);
+
 #ifdef __cplusplus
 }
 #endif

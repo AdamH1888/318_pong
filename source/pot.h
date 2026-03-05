@@ -23,6 +23,9 @@ int32_t Pot_ReadRaw(void);
  */
 int32_t Pot_ReadRightRaw(void);
 
+/* Convert potentiometer ADC value (0-4095) into a paddle top-edge Y position */
+int32_t Pot_MapToPaddleY(uint32_t potValue);
+
 #ifdef __cplusplus
 }
 #endif

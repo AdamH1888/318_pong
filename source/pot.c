@@ -2,6 +2,7 @@
 #include "fsl_lpadc.h"
 #include "fsl_common.h"
 #include "fsl_clock.h"
+#include "game_config.h"
 
 /* ADC1 on MCXN947 */
 #define POT_ADC_BASE                ADC1
@@ -106,4 +107,22 @@ int32_t Pot_ReadRaw(void)
 int32_t Pot_ReadRightRaw(void)
 {
     return Pot_ReadByTrigger(POT_RIGHT_ADC_TRIGGER_ID);
+}
+
+/* Convert potentiometer ADC value (0-4095) into a paddle top-edge Y position */
+int32_t Pot_MapToPaddleY(uint32_t potValue) {
+	if (potValue > 4095U)
+		potValue = 4095U;
+
+	float t = (float) potValue / 4095.0f;
+
+	const int yMin = 1;
+	const int yMax = 62 - PADDLE_H;
+
+	int y = (int) ((1.0f - t) * (yMax - yMin) + yMin);
+
+	if (y < yMin) y = yMin;
+	if (y > yMax) y = yMax;
+
+	return (int32_t) y;
 }
