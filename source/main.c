@@ -22,9 +22,9 @@
 #include "servo.h"                  //SG90 servo driver
 #include "buzzer.h"                 //Buzzer driver (PIO0_31)
 
-#define AI_REACT_EVERY_N_FRAMES  1	//AI paddle reacts every N frames
-#define AI_DEADZONE_PIXELS       1	//Ball is within N pixels of AI paddle center, then paddle won't move
-#define AI_HESITATE_PERCENT      5	//Percentage chance that the AI will hesitate (do nothing)
+#define AI_REACT_EVERY_N_FRAMES  5	//AI paddle reacts every N frames
+#define AI_DEADZONE_PIXELS       2	//Ball is within N pixels of AI paddle center, then paddle won't move
+#define AI_HESITATE_PERCENT      25	//Percentage chance that the AI will hesitate (do nothing)
 
 #define BUZZER_BEEP_FRAMES       3      //Frames to keep buzzer on per point (~60ms at 50Hz)
 
@@ -33,7 +33,7 @@
 #define BUTTON_DEBOUNCE_FRAMES   1      //Hardware RC filter handles bounce; 1 frame (20ms) is enough to register a press
 #define SERVE_INITIAL_FRAMES     25     //Frames before first auto-serve after pressing START (~1s accounting for I2C overhead)
 
-#define TIMER_TOTAL_SECONDS      45u    //Game countdown duration in seconds
+#define TIMER_TOTAL_SECONDS      30u    //Game countdown duration in seconds
 #define FRAME_PERIOD_US         20000u //Target frame period = 20ms (50Hz)
 
 #define GAME_OVER_DISPLAY_MS     3000u  //Show Game Over screen before returning to menu
@@ -58,22 +58,6 @@ typedef enum {
 	MODE_DISTANCE_SENSOR, //Left paddle uses HC-SR04, right paddle uses AI
 	MODE_POTENTIOMETER    //Left paddle uses potentiometer 1, right paddle uses potentiometer 2
 } GameMode;
-
-//Inequality mode: simulates reduced motor control for one random player (pot mode only)
-//Each game in pot mode, one random barrier is assigned to one random player
-typedef enum {
-	INEQUALITY_NONE,              //No inequality active
-	INEQUALITY_HIGH_SENSITIVITY,  //Software gain > 1: small pot movement causes large paddle movement
-	INEQUALITY_RANGE_COMPRESSION  //Paddle restricted to smaller area of screen (can't reach top/bottom)
-} InequalityType;
-
-#define INEQUALITY_GAIN    3.5f  //Sensitivity multiplier applied around pot center (higher = harder to control)
-#define INEQUALITY_COUNT   2     //Number of inequality types to randomly choose from (excl. NONE)
-
-//Range compression: paddle confined to Y range 10-35 instead of normal 1-44
-//Simulates limited arm movement range (stroke, muscular dystrophy, limb difference)
-#define RANGE_COMP_YMIN  10  //Compressed top limit (normally 1)
-#define RANGE_COMP_YMAX  35  //Compressed bottom limit (normally 44)
 
 //Function that generates a random number each time it is called
 //static allows variable to hold value across multiple function calls, it won't reset each time
@@ -110,7 +94,7 @@ static void updateAiPaddle(int *paddleTopY, int ballCenterY, int frameCount) {
 	if (diff > AI_DEADZONE_PIXELS) //If ball below paddle center by more than deadzone
 		(*paddleTopY)++; 			//Move paddle down
 	if (diff < -AI_DEADZONE_PIXELS)	//If ball above paddle center by more than deadzone
-		(*paddleTopY)--; 			//Move paddle up
+		(*paddleTopY)--; 			//Move paddle above
 
 	*paddleTopY = clampValueToRange(*paddleTopY, 1, 62 - PADDLE_H); //Clamp paddle so it stays on screen
 }
@@ -155,17 +139,6 @@ static int mapDistanceCmToPaddleY(float cm) {
 	//Picks a paddle pixel Y position between min and max based on distance (normalised t)
 	int y = (int) ((1.0f - t) * (yMax - yMin) + yMin); //t=0, 1-0=1, 1*(yMax - yMin) + yMin = yMax (Lowest point on screen, y = 62)
 	return y; //Paddle top edge pixel number
-}
-
-//Apply sensitivity gain around the ADC midpoint (2048)
-//gain > 1.0 amplifies small hand movements, simulating tremor / over-correction
-static uint32_t applyPotSensitivityGain(uint32_t potRaw, float gain) {
-	const float center = 2048.0f;
-	float deviation = (float)potRaw - center;
-	float amplified = center + deviation * gain;
-	if (amplified < 0.0f)    amplified = 0.0f;
-	if (amplified > 4095.0f) amplified = 4095.0f;
-	return (uint32_t)amplified;
 }
 
 //Function converts the potentiometer ADC value (0-4095) into a paddle Y position (top of paddle)
@@ -257,8 +230,8 @@ int main(void) {
 	int ballY = BALL_SPAWN_Y;
 
 	//How many pixels the ball moves each frame
-	int ballVelocityX = 5;
-	int ballVelocityY = 3;
+	int ballVelocityX = 4;
+	int ballVelocityY = 2;
 
 	int frameCount = 0;
 	int servePauseFrames = 0;
@@ -273,11 +246,6 @@ int main(void) {
 	//0xFFFF is very safe as every bit turned on (65535), so last score never equals score at the start
 	uint16_t lastScoreLeft = 0xFFFFu;
 	uint16_t lastScoreRight = 0xFFFFu;
-
-	//Inequality mode: which player (if any) has the barrier this game
-	//0 = no inequality, 1 = left player affected, 2 = right player affected
-	InequalityType activeInequality = INEQUALITY_NONE;
-	int inequalityPlayer = 0;  //0=none, 1=left, 2=right
 
 	//Timer: counts down from TIMER_TOTAL_SECONDS to 0, only decrements while in STATE_RUNNING
 	//Pretend the previous time something completely different, so the game is forced to draw the timer the first time it runs
@@ -299,8 +267,8 @@ int main(void) {
 		//Countdown uses real elapsed time, so LCD stays accurate even if I2C/sensor/debug work makes some frames longer
 		if (wasRunningLastLoop && timerSeconds > 0u) {
 			timerAccumUs += elapsedUs;
-			while (timerAccumUs >= 1000000u && timerSeconds > 0u) {
-				timerAccumUs -= 1000000u;
+			while (timerAccumUs >= 1500000u && timerSeconds > 0u) {
+				timerAccumUs -= 1500000u;
 				timerSeconds--;
 				if (timerSeconds == 0u) {
 					gameState = STATE_GAME_OVER;
@@ -331,11 +299,6 @@ int main(void) {
 					} else if (gameState == STATE_MODE_SELECT) {
 						//Confirm mode selection and start game
 						gameState = STATE_RUNNING;
-						//Reset ball to starting position
-						ballX = BALL_SPAWN_LEFT_X;
-						ballY = BALL_SPAWN_Y;
-						ballVelocityX = 5;
-						ballVelocityY = 3;
 						servePauseFrames = SERVE_INITIAL_FRAMES;
 						timerSeconds = TIMER_TOTAL_SECONDS;
 						lastTimerSecs = 0xFFFFFFFFu;
@@ -343,23 +306,6 @@ int main(void) {
 						gameOverFrames = 0u;
 						lastScoreLeft = scoreLeft; //Sync score so LCD updates but buzzer doesn't fire
 						lastScoreRight = scoreRight;
-
-						//Inequality: in pot mode, randomly pick one barrier and assign to one random player
-						if (gameMode == MODE_POTENTIOMETER) {
-							uint32_t barrierRoll = rngNext() % INEQUALITY_COUNT; //0 or 1
-							if (barrierRoll == 0) {
-								activeInequality = INEQUALITY_HIGH_SENSITIVITY;
-							} else {
-								activeInequality = INEQUALITY_RANGE_COMPRESSION;
-							}
-							inequalityPlayer = (rngNext() % 2) + 1; //1=left, 2=right (50/50)
-							PRINTF("Inequality: %s assigned to %s player\r\n",
-									activeInequality == INEQUALITY_HIGH_SENSITIVITY ? "HIGH SENSITIVITY" : "RANGE COMPRESSION",
-									inequalityPlayer == 1 ? "LEFT" : "RIGHT");
-						} else {
-							activeInequality = INEQUALITY_NONE;
-							inequalityPlayer = 0;
-						}
 					} else if (gameState == STATE_RUNNING) {
 						gameState = STATE_PAUSED;   //Press during game: pause
 					} else if (gameState == STATE_PAUSED) {
@@ -394,8 +340,8 @@ int main(void) {
 						lastScoreRight = 0xFFFFu;
 						ballX = BALL_SPAWN_LEFT_X;
 						ballY = BALL_SPAWN_Y;
-						ballVelocityX = 5;
-						ballVelocityY = 3;
+						ballVelocityX = 4;
+						ballVelocityY = 2;
 						servePauseFrames = 0;
 						leftPaddleTopY = 24;
 						rightPaddleTopY = 24;
@@ -403,8 +349,6 @@ int main(void) {
 						lastTimerSecs = 0xFFFFFFFFu;
 						timerAccumUs = 0u;
 						gameOverFrames = 0u;
-						activeInequality = INEQUALITY_NONE; //Clear inequality on reset
-						inequalityPlayer = 0;
 						lcd_show_score(0, 0);
 						lcd_clear_timer();
 						Buzzer_Stop();
@@ -440,7 +384,7 @@ int main(void) {
 
 		if (gameMode == MODE_DISTANCE_SENSOR) {
 			//Distance sensor mode with EMA smoothing
-			if (sensorFrameCounter >= 2) { //Read sensor every 2 frames (40ms)
+			if (sensorFrameCounter >= 3) { //Read sensor every 3 frames (60ms)
 				sensorFrameCounter = 0;
 
 				float cm;
@@ -451,7 +395,7 @@ int main(void) {
 						cm = 6.0f;
 					if (cm > 18.0f)
 						cm = 18.0f;
-					smoothedCm = 0.6f * cm + 0.4f * smoothedCm; //EMA smoothing (60% new, 40% old)
+					smoothedCm = 0.35f * cm + 0.65f * smoothedCm; //EMA smoothing
 					leftPaddleTopY = mapDistanceCmToPaddleY(smoothedCm);
 					leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1,
 							62 - PADDLE_H);
@@ -470,20 +414,10 @@ int main(void) {
 					if (lastPotRaw < 0 || (potRaw - lastPotRaw > 50)
 							|| (lastPotRaw - potRaw > 50)) {
 						lastPotRaw = potRaw;
-						//Apply inequality effects if left player is affected
-						uint32_t potMapped = (uint32_t) potRaw;
-						if (inequalityPlayer == 1) {
-							if (activeInequality == INEQUALITY_HIGH_SENSITIVITY) {
-								potMapped = applyPotSensitivityGain(potMapped, INEQUALITY_GAIN);
-							}
-						}
-						leftPaddleTopY = mapPotentiometerTopaddleY(potMapped);
-						//Apply range compression if left player is affected
-						if (activeInequality == INEQUALITY_RANGE_COMPRESSION && inequalityPlayer == 1) {
-							leftPaddleTopY = clampValueToRange(leftPaddleTopY, RANGE_COMP_YMIN, RANGE_COMP_YMAX);
-						} else {
-							leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1, 62 - PADDLE_H);
-						}
+						leftPaddleTopY = mapPotentiometerTopaddleY(
+								(uint32_t) potRaw);
+						leftPaddleTopY = clampValueToRange(leftPaddleTopY, 1,
+								62 - PADDLE_H);
 					}
 					lastSensorCm = (float) potRaw / 4095.0f * 12.0f; //Fake cm value for display
 					lastSensorValid = true;
@@ -508,20 +442,10 @@ int main(void) {
 					if (lastRightPotRaw < 0 || (rightPotRaw - lastRightPotRaw > 50)
 							|| (lastRightPotRaw - rightPotRaw > 50)) {
 						lastRightPotRaw = rightPotRaw;
-						//Apply inequality effects if right player is affected
-						uint32_t rightPotMapped = (uint32_t) rightPotRaw;
-						if (inequalityPlayer == 2) {
-							if (activeInequality == INEQUALITY_HIGH_SENSITIVITY) {
-								rightPotMapped = applyPotSensitivityGain(rightPotMapped, INEQUALITY_GAIN);
-							}
-						}
-						rightPaddleTopY = mapPotentiometerTopaddleY(rightPotMapped);
-						//Apply range compression if right player is affected
-						if (activeInequality == INEQUALITY_RANGE_COMPRESSION && inequalityPlayer == 2) {
-							rightPaddleTopY = clampValueToRange(rightPaddleTopY, RANGE_COMP_YMIN, RANGE_COMP_YMAX);
-						} else {
-							rightPaddleTopY = clampValueToRange(rightPaddleTopY, 1, 62 - PADDLE_H);
-						}
+						rightPaddleTopY = mapPotentiometerTopaddleY(
+								(uint32_t) rightPotRaw);
+						rightPaddleTopY = clampValueToRange(rightPaddleTopY, 1,
+								62 - PADDLE_H);
 					}
 				}
 			}
@@ -557,10 +481,6 @@ int main(void) {
 				ballVelocityY = -ballVelocityY;
 			}
 
-			//Safety bounds: prevent ball from going completely off-screen
-			if (ballX < -10) ballX = BALL_SPAWN_LEFT_X;  //Ball went far left, reset
-			if (ballX > 137) ballX = BALL_SPAWN_RIGHT_X;  //Ball went far right, reset
-
 			//Handles left paddle collision logic
 			//Only check the left paddle when the ball is moving left so the velocity is less than 0 (negative)
 			//And also when the ball reaches the left paddle's X position
@@ -573,11 +493,11 @@ int main(void) {
 						leftPaddleTopY, leftPaddleTopY + (PADDLE_H - 1));
 
 				if (hitLeft) {
-					//Ball hits the paddle
-					//Adjust angle based on which third of paddle was hit
-					adjustBallAngleFromPaddleHit(&ballVelocityY, ballCenterY, leftPaddleTopY);
+				//Ball hits the paddle
+				//Adjust angle based on which third of paddle was hit
+				adjustBallAngleFromPaddleHit(&ballVelocityY, ballCenterY, leftPaddleTopY);
 
-					//Move ball slightly away from paddle so it doesn't stick
+				//Move ball slightly away from paddle so it doesn't stick
 					ballX = (int) leftPaddleX + 1;
 					ballVelocityX = -ballVelocityX;
 				} else {
@@ -589,15 +509,6 @@ int main(void) {
 					//Also sets servePauseFrames so the game pauses briefly after a point
 					resetBallAfterPoint(&ballX, &ballY, &ballVelocityX,
 							&ballVelocityY, true, &servePauseFrames);
-					//Random serve direction: up, straight, or down
-					uint32_t serveDir = rngNext() % 3;
-					if (serveDir == 0) {
-						ballVelocityY = -2;  //Up
-					} else if (serveDir == 1) {
-						ballVelocityY = 0;   //Straight
-					} else {
-						ballVelocityY = 2;   //Down
-					}
 				}
 			}
 
@@ -614,10 +525,10 @@ int main(void) {
 
 				if (hitRight) {
 					//Ball hit the right paddle
-					//Adjust angle based on which third of paddle was hit
-					adjustBallAngleFromPaddleHit(&ballVelocityY, ballCenterY, rightPaddleTopY);
+				//Adjust angle based on which third of paddle was hit
+				adjustBallAngleFromPaddleHit(&ballVelocityY, ballCenterY, rightPaddleTopY);
 
-					//Move the ball away from paddle so it doesn't get stuck
+				//Move the ball away from paddle so it doesn't get stuck
 					ballX = (int) rightPaddleX - 2;
 					ballVelocityX = -ballVelocityX;
 				} else {
@@ -629,15 +540,6 @@ int main(void) {
 					//Also sets servePauseFrames so the game pauses briefly after a point
 					resetBallAfterPoint(&ballX, &ballY, &ballVelocityX,
 							&ballVelocityY, false, &servePauseFrames);
-					//Random serve direction: up, straight, or down
-					uint32_t serveDir2 = rngNext() % 3;
-					if (serveDir2 == 0) {
-						ballVelocityY = -2;  //Up
-					} else if (serveDir2 == 1) {
-						ballVelocityY = 0;   //Straight
-					} else {
-						ballVelocityY = 2;   //Down
-					}
 				}
 			}
 
@@ -778,6 +680,7 @@ int main(void) {
 			fb_flush_to_oled();
 		}
 
+		//SERVO_OFF:      no pulse (menu, motor de-energizes)
 		ServoState servoState;
 		if (gameState == STATE_RUNNING) {
 			servoState = SERVO_TRACKING;

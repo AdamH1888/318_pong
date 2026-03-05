@@ -22,16 +22,16 @@ void resetBallAfterPoint(
     if (serveToRight) //Checks whether the ball should be served to the right
     {
         *ballX = BALL_SPAWN_LEFT_X; //Left paddle serves
-        *vx = 5;					//Sets ball X velocity to fast (5 pixels per frame to right)
+        *vx = 4;					//Sets ball X velocity to positive so it moves to right (4 pixels per frame to right)
     }
     else
     {
         *ballX = BALL_SPAWN_RIGHT_X; //Right paddle serves
-        *vx = -5;					 //Sets ball x velocity to fast (5 pixels per frame to left)
+        *vx = -4;					 //Sets ball x velocity to negative so it moves to left (4 pixels per frame to left)
     }
 
     *ballY = BALL_SPAWN_Y;					//Set the ball's Y position to the starting Y-coordinate (32=center)
-    *vy = 3;								//Move fast (3 pixels per frame)
+    *vy = 2;								//Move downwards at 2 pixels per frame
     *servePauseFrames = SERVE_PAUSE_FRAMES;	//Serve pause set to specific amount of frames
 }
 

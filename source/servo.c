@@ -63,40 +63,43 @@ uint32_t Servo_Update(ServoState state, uint32_t timerSeconds)
 
     if (state == SERVO_TRACKING)
     {
-        /* Servo oscillates ±20 degrees (±10 degrees from 90 deg center)
-         * Center position: 90 degrees (900 x10)
-         * Oscillation range: 80-100 degrees (800-1000 x10)
-         * Behavior:
-         *   45-25 sec: slow oscillation (every 10 frames) — first 20 seconds
-         *   25-5 sec: medium oscillation (every 5 frames) — middle 20 seconds
-         *   5-0 sec: very fast oscillation (every 1 frame) — last 5 seconds
+        /* Map timer countdown to servo position (180 deg down -> 0 deg up as time counts down)
+         * timerSeconds: 30 -> 180°, 0 -> 0°
+         * Formula: angle = timerSeconds / 30 * 180
          */
-        uint32_t max_time = 45u;  /* TIMER_TOTAL_SECONDS */
-        uint16_t center_angle_x10 = 900u;  /* Center at 90 degrees */
-        uint16_t oscillation_range = 200u;  /* ±20 degrees = ±200 x10 */
+        uint32_t max_time = 30u;  /* TIMER_TOTAL_SECONDS */
 
-        /* Progressive oscillation that accelerates as time runs out */
+        /* Base sweep: servo points down at start, sweeps up as time counts down */
+        if (timerSeconds > max_time) timerSeconds = max_time;
+        uint16_t base_angle_x10 = (uint16_t)((timerSeconds * 1800u) / max_time);
+
+        /* Progressive ticking that accelerates as time runs out */
         static uint32_t tick_counter = 0u;
         tick_counter++;
         
-        /* Calculate oscillation interval based on remaining time
-         * 45-25 sec: tick every 10 frames (slow)
-         * 25-5 sec: tick every 5 frames (medium)
-         * 5-0 sec: tick every 1 frame (very fast)
+        /* Calculate tick interval based on remaining time
+         * 30-20 sec: tick every 10 frames (slow)
+         * 20-10 sec: tick every 5 frames (medium)
+         * 10-0 sec: tick every 1 frame (very fast)
          */
         uint32_t tick_interval = 10u;  /* Default: slow */
-        if (timerSeconds <= 5u) {
-            tick_interval = 1u;   /* Very fast oscillation in last 5 seconds */
-        } else if (timerSeconds <= 25u) {
-            tick_interval = 5u;   /* Medium oscillation in middle 20 seconds */
+        if (timerSeconds < 10u) {
+            tick_interval = 1u;  /* Fast tick in last 10 seconds */
+        } else if (timerSeconds < 20u) {
+            tick_interval = 5u;  /* Medium tick */
         }
-        /* else: first 20 seconds stay at 10 frame intervals (slow) */
         
-        /* Calculate oscillation: alternates between center + range and center - range */
-        if ((tick_counter / tick_interval) % 2u) {
-            angle_x10 = center_angle_x10 + oscillation_range;  /* +20 degrees */
+        /* Only apply ticking after first few seconds (when sweep has progressed) */
+        if (timerSeconds < 28u) {
+            uint16_t tick_offset = ((tick_counter / tick_interval) % 2u) ? 150u : 0u;  /* ±15 deg oscillation */
+            
+            if (base_angle_x10 >= tick_offset) {
+                angle_x10 = base_angle_x10 - tick_offset;
+            } else {
+                angle_x10 = base_angle_x10 + tick_offset;
+            }
         } else {
-            angle_x10 = center_angle_x10 - oscillation_range;  /* -20 degrees */
+            angle_x10 = base_angle_x10;  /* No ticking at very start */
         }
 
         s_last_angle_x10 = angle_x10;

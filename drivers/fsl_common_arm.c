@@ -248,11 +248,11 @@ void SDK_DelayAtLeastUs(uint32_t delayTime_us, uint32_t coreClock_Hz)
 #elif (__CORTEX_M == 7)
         /* Divide value may be different in various environment to ensure delay is precise.
          * Every loop count includes three instructions, due to Cortex-M7 sometimes executes
-         * two instructions in one period, through test here set divide 1.0 (empirical).
-         * Other M cores use divide 4. By the way divide 1.0 could let the count lose precision,
-         * but it does not matter because other instructions outside while loop is enough to fill the time.
+         * two instructions in one period, through test here set divide 1.5. Other M cores use
+         * divide 4. By the way, divide 1.5 or 4 could let the count lose precision, but it does
+         * not matter because other instructions outside while loop is enough to fill the time.
          */
-        count = count / 1U;
+        count = count / 3U * 2U;
 #else
         count = count / 4U;
 #endif
