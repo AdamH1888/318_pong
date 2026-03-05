@@ -1,3 +1,14 @@
 doc/tmp*/
 doc/*tmp*
 doc/*claude*
+
+*.o
+*.su
+*.axf
+*.elf
+*.map
+*.d
+*.a
+
+Debug/
+Release/
