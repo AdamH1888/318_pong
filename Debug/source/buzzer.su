@@ -1,8 +1,0 @@
-C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_gpio.h:345:20:GPIO_PinWrite	24	static
-../source/buzzer.c:14:13:Buzzer_Write	24	static
-../source/buzzer.c:27:6:Buzzer_Init	16	static
-../source/buzzer.c:40:6:Buzzer_On	8	static
-../source/buzzer.c:45:6:Buzzer_Off	8	static
-../source/buzzer.c:50:6:Buzzer_Stop	8	static
-../source/buzzer.c:56:6:Buzzer_Beep	16	static
-../source/buzzer.c:67:6:Buzzer_Update	8	static

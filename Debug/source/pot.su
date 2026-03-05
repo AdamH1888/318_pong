@@ -1,6 +1,0 @@
-C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_clock.h:1492:20:CLOCK_EnableClock	24	static
-C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_lpadc.h:1128:20:LPADC_DoSoftwareTrigger	16	static
-../source/pot.c:26:16:Pot_ReadByTrigger	32	static
-../source/pot.c:62:6:Pot_Init	88	static
-../source/pot.c:100:9:Pot_ReadRaw	8	static
-../source/pot.c:106:9:Pot_ReadRightRaw	8	static

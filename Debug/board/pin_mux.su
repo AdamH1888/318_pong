@@ -1,7 +1,0 @@
-C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_clock.h:1492:20:CLOCK_EnableClock	24	static
-C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_port.h:360:20:PORT_SetPinConfig	32	static
-C:\Users\adamh\OneDrive\Documents\PROJECT\frdmmcxn947_hello_world_cm33_core0\drivers/fsl_port.h:463:20:PORT_SetPinMux	24	static
-../board/pin_mux.c:44:6:BOARD_InitBootPins	8	static
-../board/pin_mux.c:86:6:BOARD_InitPins	48	static
-../board/pin_mux.c:308:6:OLEDI2C	8	static
-../board/pin_mux.c:350:6:Encoder_IO	4	static
